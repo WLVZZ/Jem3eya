@@ -1,0 +1,92 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    working_dir: /var/www/backend
+    volumes:
+      - ./backend:/var/www/backend
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+      - minio
+    command: >
+      sh -lc "test -f .env || cp .env.example .env;
+      composer install &&
+      php artisan key:generate --force &&
+      php artisan migrate --seed &&
+      php artisan serve --host=0.0.0.0 --port=8000"
+
+  queue:
+    build:
+      context: .
+      dockerfile: docker/backend/Dockerfile
+    working_dir: /var/www/backend
+    volumes:
+      - ./backend:/var/www/backend
+    depends_on:
+      - backend
+      - redis
+    command: sh -lc "test -f .env || cp .env.example .env; composer install && php artisan queue:work --tries=3 --backoff=5"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: docker/frontend/Dockerfile
+    working_dir: /app
+    env_file:
+      - frontend/.env.example
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    command: sh -lc "npm install && npm run dev"
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: jem3eya
+      POSTGRES_USER: jem3eya
+      POSTGRES_PASSWORD: jem3eya
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  minio:
+    image: minio/minio:RELEASE.2025-04-22T22-12-26Z
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  minio-create-bucket:
+    image: minio/mc:RELEASE.2025-04-16T18-13-26Z
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 minioadmin minioadmin; do sleep 2; done;
+      mc mb --ignore-existing local/jem3eya;
+      mc anonymous set none local/jem3eya;
+      "
+
+volumes:
+  postgres_data:
+  minio_data:
+  frontend_node_modules:

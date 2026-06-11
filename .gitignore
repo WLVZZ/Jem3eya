@@ -1,0 +1,13 @@
+.env
+.env.local
+vendor/
+node_modules/
+.next/
+storage/*.key
+storage/logs/
+coverage/
+*.log
+.dev-server*.log
+*.tsbuildinfo
+Thumbs.db
+.DS_Store
